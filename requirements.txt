@@ -4,4 +4,4 @@ numpy
 panel
 xarray
 holoviews
-bokeh
+bokeh==1.2.0
