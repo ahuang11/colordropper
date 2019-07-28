@@ -1,0 +1,7 @@
+pillow
+requests
+numpy
+panel
+xarray
+holoviews
+bokeh
