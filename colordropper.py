@@ -51,9 +51,9 @@ def process_image(content):
     ).opts(
         'Image', default_tools=['pan', 'wheel_zoom', 'tap', 'reset'],
         active_tools=['tap', 'wheel_zoom'], xaxis='bare', yaxis='bare',
-        aspect=aspect, alpha=0, responsive=True
+        aspect=aspect, alpha=0, responsive=True, cmap='RdBu_r',
     ).opts('RGB', default_tools=['pan', 'wheel_zoom', 'tap', 'reset'],
-           responsive=True)
+           responsive=True, cmap='RdBu_r')
 
     tap = hv.streams.Tap(source=image, x=shape[1] / 2, y=shape[0] / 2)
     tap.param.watch(tap_update, ['x', 'y'])
