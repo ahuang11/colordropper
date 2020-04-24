@@ -13,6 +13,9 @@ hv.extension('bokeh')
 pn.extension()
 
 
+IMAGE_URL = ('https://img06.deviantart.net/2635/i/2010/170/c/f/'
+             'night_and_day_wallpaper_by_seph_the_zeth.jpg')
+
 EXAMPLE_CODE = """
 ```
 import xarray as xr
@@ -53,12 +56,18 @@ def process_image(content):
         active_tools=['tap', 'wheel_zoom'], xaxis='bare', yaxis='bare',
         aspect=aspect, alpha=0, responsive=True, cmap='RdBu_r',
     ).opts('RGB', default_tools=['pan', 'wheel_zoom', 'tap', 'reset'],
-           responsive=True)
+           responsive=True
+    ).opts(toolbar='above')
 
     tap = hv.streams.Tap(source=image, x=shape[1] / 2, y=shape[0] / 2)
     tap.param.watch(tap_update, ['x', 'y'])
     return image
-    
+
+
+def read_url(event):
+    content = requests.get(event.new).content
+    pane.object = process_image(content)
+
 
 def read_file(event):
     pane.object = process_image(event.new)
@@ -103,7 +112,7 @@ def make_color_box(color):
 
 def update(options):
     options = [opt for opt in options if opt != '']
-    
+
     multi_select.options = options
     text_input.value = ', '.join(options)
 
@@ -147,27 +156,34 @@ def text_input_update(event):
     update(options)
 
 
-image_url = ('https://img06.deviantart.net/2635/i/2010/170/c/f/'
-             'night_and_day_wallpaper_by_seph_the_zeth.jpg')
-content = requests.get(image_url).content
-
 previous_selections = []
-multi_select = pn.widgets.MultiSelect(options=[], sizing_mode='stretch_both')
-remove_button = pn.widgets.Button(name='Remove', button_type='warning')
-undo_button = pn.widgets.Button(name='Undo', button_type='primary')
-clear_button = pn.widgets.Button(name='Clear', button_type='danger')
+multi_select = pn.widgets.MultiSelect(
+    options=[], sizing_mode='stretch_both', max_height=150)
+remove_button = pn.widgets.Button(name='Remove', button_type='warning',
+                                  sizing_mode='stretch_width')
+undo_button = pn.widgets.Button(name='Undo', button_type='primary',
+                                sizing_mode='stretch_width')
+clear_button = pn.widgets.Button(name='Clear', button_type='danger',
+                                 sizing_mode='stretch_width')
 divider_toggle = pn.widgets.Toggle(name='Show Divider')
 value_toggle = pn.widgets.Toggle(name='Embed Values')
 highlight_toggle = pn.widgets.Toggle(name='Highlight Text')
-text_input = pn.widgets.TextInput()
+text_input = pn.widgets.TextInput(placeholder='Click on image to see values!')
+
+instructions = (
+    '## ColorDropper (an online eyedropper tool)\n'
+    '*To use, paste a URL ending in .jpg or .png or click '
+    'Choose File" to upload an image, then click on the image '
+    'to get a hexcode for that clicked point!*')
 
 file_input = pn.widgets.FileInput()
-pane = pn.pane.HoloViews(process_image(content),
-                         min_height=350, min_width=350,
-                         sizing_mode='scale_both')
+url_input = pn.widgets.TextInput(placeholder='Paste url here!')
+
+pane = pn.pane.HoloViews(sizing_mode='scale_both', align='center',
+                         max_height=850, max_width=850)
 markdown = pn.pane.Markdown(EXAMPLE_CODE.format(colors=[]),
                             sizing_mode='scale_both',
-                            margin=(5, 10))
+                            margin=0)
 
 remove_button.on_click(remove_update)
 undo_button.on_click(undo_update)
@@ -179,15 +195,21 @@ highlight_toggle.param.watch(toggle_update, 'value')
 
 text_input.param.watch(text_input_update, 'value')
 
+url_input.param.watch(read_url, 'value')
 file_input.param.watch(read_file, 'value')
 
-buttons = pn.Column(remove_button, undo_button, clear_button)
-toggles = pn.Column(divider_toggle, value_toggle, highlight_toggle)
-widgetbox = pn.Row(multi_select, buttons, toggles)
+url_input.value = IMAGE_URL
+
+buttons = pn.Column(remove_button, undo_button, clear_button,
+                    sizing_mode='stretch_width')
+toggles = pn.Column(divider_toggle, value_toggle, highlight_toggle,
+                    sizing_mode='stretch_width')
+widgetbox = pn.Row(buttons, toggles)
 row = pn.Row(make_color_box('whitesmoke'),
              sizing_mode='stretch_width', margin=(5, 10))
-layout = pn.Column(file_input, widgetbox, row, text_input, pane, markdown,
-                   sizing_mode='scale_both', max_width=1000,
-                   min_height=350, min_width=350)
-
+layout = pn.Column(
+    instructions, url_input, file_input,
+    pane, row, text_input, multi_select, widgetbox, markdown,
+    margin=(0, 380), sizing_mode='stretch_width'
+)
 layout.servable(title='ColorDropper')
