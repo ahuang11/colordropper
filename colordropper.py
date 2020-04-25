@@ -357,15 +357,16 @@ left_layout = pn.WidgetBox(
 output_group = pn.widgets.RadioButtonGroup(
     options=[HEXCODE, RGB_255, RGB_1], margin=(15, 10, 5, 10))
 num_slider = pn.widgets.IntSlider(
-    name='Number of colors', start=2, end=255, step=1, value=1)
-plot_ds = xr.tutorial.open_dataset('air_temperature')
-plot_da = plot_ds['air'].isel(time=0)
-hv_plot = hv.Image(plot_da, ['lon', 'lat'], ['air']).opts(
+    name='Number of colors', start=2, end=255, step=1, value=1,
+    margin=(10, 15))
+data = np.load('tmp_ds.npy')[::-1]
+plot_da = xr.DataArray(data, name='tmp', dims=('y', 'x'))
+hv_plot = hv.Image(plot_da, ['x', 'y'], ['tmp']).opts(
     responsive=True, toolbar=None, colorbar=True, default_tools=[],
     colorbar_opts={'background_fill_color': WHITE_SMOKE}, cmap=DEFAULT_CMAP,
     xaxis=None, yaxis=None, hooks=[remove_white_borders], aspect='equal')
 plot_pane = pn.pane.HoloViews(
-    min_height=500, max_height=500, object=hv_plot, sizing_mode='scale_both',
+    min_height=300, max_height=500, object=hv_plot, sizing_mode='scale_both',
     align='center', margin=(0, 3))
 code_markdown = pn.pane.Markdown(
     EXAMPLE_CODE.format(colors=''),
