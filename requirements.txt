@@ -1,5 +1,4 @@
-pillow
-requests
+matplotlib
 numpy
 panel
 xarray
