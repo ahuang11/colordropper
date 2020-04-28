@@ -51,36 +51,41 @@ def remove_white_borders(plot, element):
     p.border_fill_color = WHITE_SMOKE
 
 
-def process_image(input_obj, image_fmt, from_url):
-    if from_url:
-        content = urlopen(input_obj)
-    else:
-        content = BytesIO(input_obj)
-    data = plt.imread(content, format=image_fmt)[::-1]
-
-    shape = data.shape
-    aspect = data.shape[1] / data.shape[0]
-
-    global image_ds
-    image_ds = xr.Dataset({
-        'R': (('Y', 'X'), data[..., 0]),
-        'G': (('Y', 'X'), data[..., 1]),
-        'B': (('Y', 'X'), data[..., 2]),
-    })
+def show_image(ds):
+    shape = ds['R'].shape
+    aspect = shape[1] / shape[0]
 
     wheel_zoom = WheelZoomTool(zoom_on_axis=False)
 
     image = (
-        hv.RGB(image_ds, ['X', 'Y'], ['R', 'G', 'B'])
+        hv.RGB(ds, ['X', 'Y'], ['R', 'G', 'B'])
     ).opts(
         'RGB', default_tools=['pan', wheel_zoom, 'tap', 'reset'],
         active_tools=['tap', 'wheel_zoom'], xaxis=None, yaxis=None,
         aspect=aspect, responsive=True, hooks=[remove_white_borders],
     ).opts(toolbar='above')
 
-    tap = hv.streams.Tap(source=image, x=shape[1] / 2, y=shape[0] / 2)
+    tap = hv.streams.Tap(source=image, x=shape[1], y=shape[0])
     tap.param.watch(tap_update, ['x', 'y'])
     return image
+
+
+def read_data(input_obj, image_fmt, from_url):
+    if from_url:
+        content = urlopen(input_obj)
+    else:
+        content = BytesIO(input_obj)
+
+    data = plt.imread(content, format=image_fmt)[::-1]
+    pixelate_slider.end = int(max(data.shape) / 10)
+
+    global base_ds
+    base_ds = xr.Dataset({
+        'R': (('Y', 'X'), data[..., 0]),
+        'G': (('Y', 'X'), data[..., 1]),
+        'B': (('Y', 'X'), data[..., 2]),
+    })
+    return base_ds
 
 
 def process_input(event):
@@ -95,7 +100,8 @@ def process_input(event):
     if image_fmt == '':
         image_fmt = None
 
-    image_pane.object = process_image(input_obj, image_fmt, from_url)
+    base_ds = read_data(input_obj, image_fmt, from_url)
+    image_pane.object = show_image(base_ds)
 
 
 def clamp(x):
@@ -149,6 +155,11 @@ def make_color_row(color):
         return swath
 
 
+def initialize_example():
+    base_ds = read_data(IMAGE_URL, IMAGE_EXT, True)
+    image_pane.object = show_image(base_ds)
+
+
 def update(options):
     options = [
         opt for opt in options
@@ -167,6 +178,17 @@ def update(options):
     color_row.objects = [make_color_row(opt) for opt in options]
 
     slider_update(None)
+
+
+def pixelate_update(event):
+    num_pixels = pixelate_slider.value
+    # similar to ds.coarsen(x=10).mean() but parameterized
+    coarse_ds = getattr(
+        base_ds.coarsen(
+            **{'X': num_pixels, 'Y': num_pixels}, boundary='pad'
+        ), pixelate_group.value.lower()
+    )().astype(int)
+    image_pane.object = show_image(coarse_ds)
 
 
 def slider_update(event):
@@ -206,12 +228,13 @@ def slider_update(event):
 
 def tap_update(x=0, y=0):
     previous_selections.append(multi_select.options)
+    ds = image_pane.object.data
     try:
-        sel_ds = image_ds.isel(X=round(x.new), Y=round(y.new))
+        sel_ds = ds.isel(X=round(x.new), Y=round(y.new))
         hexcode = rgb_to_hexcode(sel_ds['R'], sel_ds['G'], sel_ds['B'])
         options = multi_select.options + [hexcode]
         update(options)
-    except AttributeError as e:
+    except (AttributeError, IndexError) as e:
         print(e)
 
 
@@ -263,9 +286,11 @@ subtitle_markdown = pn.pane.Markdown(
     '### <center>(an online eyedropper tool)</center>', margin=(15, 0, 0, 0)
 )
 caption_markdown = pn.pane.Markdown(
-    '*<center>To use, paste an image url or click '
+    '<center>To use, paste an image url or click '
     'Choose File" to upload an image, then click on the image '
-    'to get a hexcode for that clicked point!</center>*',
+    'to get a hexcode for that clicked point!</center>\n<center>'
+    '*<a href="https://github.com/ahuang11/colordropper">Source Code</a> | '
+    '<a href="https://github.com/ahuang11/">Author\'s GitHub</a>*',
     sizing_mode=STR_WIDTH, margin=0
 )
 
@@ -293,6 +318,14 @@ url_input = pn.widgets.TextInput(placeholder='Enter an image url here!',
                                  margin=(15, 10, 5, 10))
 file_input = pn.widgets.FileInput(accept='image/*')
 
+pixelate_group = pn.widgets.RadioButtonGroup(
+    options=['Mean', 'Min', 'Max'], margin=(15, 10, 5, 10))
+
+pixelate_slider = pn.widgets.IntSlider(
+    name='Number of pixels to aggregate', start=1, end=100, step=1,
+    sizing_mode=STR_WIDTH)
+pixelate_slider.callback_policy = 'throttled'
+
 text_input = pn.widgets.TextInput(
     placeholder='Click on image above to see values or add '
                 'comma separated hexcodes here!', margin=(10, 10, 0, 10))
@@ -315,12 +348,16 @@ clear_button = pn.widgets.Button(name='Clear', button_type='danger',
 image_pane = pn.pane.HoloViews(
     sizing_mode='scale_both', align='center',
     max_height=250, margin=(0, 3))
-image_pane.object = process_image(IMAGE_URL, IMAGE_EXT, True)
+
+initialize_example()
 
 # Link left side objects
 
 url_input.param.watch(process_input, 'value')
 file_input.param.watch(process_input, 'value')
+
+pixelate_group.param.watch(pixelate_update, 'value')
+pixelate_slider.param.watch(pixelate_update, 'value')
 
 text_input.param.watch(text_input_update, 'value')
 divider_toggle.param.watch(toggle_update, 'value')
@@ -333,6 +370,8 @@ clear_button.on_click(clear_update)
 
 # Create left side layout
 
+slider_row = pn.Row(pixelate_group, pixelate_slider,
+                    sizing_mode=STR_WIDTH, margin=(0, 6))
 color_row = pn.Row(make_color_row(WHITE_SMOKE), margin=(0, 11, 10, 11),
                    sizing_mode=STR_WIDTH)
 toggles_row = pn.Row(divider_toggle, embed_toggle, highlight_toggle,
@@ -345,6 +384,7 @@ left_layout = pn.WidgetBox(
     url_input,
     file_input,
     image_pane,
+    slider_row,
     text_input,
     color_row,
     toggles_row,
